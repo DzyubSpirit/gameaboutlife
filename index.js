@@ -1,8 +1,27 @@
 window.onload = function() {
   const { body } = document;
+  const mdImg = document.getElementById('mdImg');
+  const barImg = document.getElementById('barImg');
+  const BUILDING_TYPES = {
+    md: {
+      img: mdImg,
+      mu: x => 1 / x,
+      T: 1,
+    },
+    bar: {
+      img: barImg,
+      mu: x => 1 / x,
+      T: 7,
+    },
+    house: {
+      mu: x => 7 / x,
+      T: 1,
+    }
+  };
+  const BUILDING_TYPE_NAMES = Object.keys(BUILDING_TYPES);
   const canvas = document.createElement('canvas');
   canvas.width = '650';
-  canvas.height = '480';
+  canvas.height = '400';
   body.appendChild(canvas);
   const ctx = canvas.getContext('2d');
 
@@ -29,11 +48,21 @@ window.onload = function() {
     window.requestAnimationFrame(tick);
   }
 
-  function Human(field, x, y, houseX, houseY) {
+  function generateColor() {
+    let r = Math.floor(Math.random() * 256);
+    let g = Math.floor(Math.random() * 256);
+    let b = Math.floor(Math.random() * 256);
+    while (r + g + b < 128 || r + g + b > 760) {
+      r = Math.floor(Math.random() * 256);
+      g = Math.floor(Math.random() * 256);
+      b = Math.floor(Math.random() * 256);
+    }
+    return '#' + (r * 65536 + g * 256 + b).toString(16);
+  }
+
+  function Human(field, x, y) {
     this.x = x;
     this.y = y;
-    this.houseX = houseX;
-    this.houseY = houseY;
     this.drawingX = this.x;
     this.drawingY = this.y;
     this.walking = false;
@@ -44,7 +73,7 @@ window.onload = function() {
     this.targetX = null;
     this.targetY = null;
     this.field = field;
-    this.color = '#' + Math.floor(Math.random() * 4096).toString(16);
+    this.color = generateColor();
     this.startMoving = function(toX, toY) {
       this.walkingPath = this.calcWalkingPath(toX, toY);
       const { walkingPath } = this;
@@ -81,9 +110,15 @@ window.onload = function() {
             this.doNextStep();
           } else {
             this.walking = false;
+            this.nextTarget();
           }
         }
       }
+    };
+
+    this.nextTarget = function() {
+      const [x, y] = randomCoord(field.cellsWidth, field.cellsHeight);
+      this.startMoving(x, y);
     };
 
     this.calcWalkingPath = function(toX, toY) {
@@ -105,13 +140,16 @@ window.onload = function() {
               closestEmptyPath[closestEmptyPath.length - 1];
             walkingPath = this.calcWalkingPath(closeX, closeY);
           }
-          console.log(...walkingPath);
         } break;
       }
       return walkingPath;
     }
+  }
 
-    this.startMoving(this.houseX, this.houseY);
+  function randomCoord(width, height) {
+    let x = Math.floor(Math.random() * width);
+    let y = Math.floor(Math.random() * height);
+    return [x, y];
   }
 
   function Field() {
@@ -126,43 +164,57 @@ window.onload = function() {
     this.cellHeight = this.height / this.cellsHeight;
     this.cells = generateCells(this.cellsWidth, this.cellsHeight);
     this.humans = generateHumans(this);
+    this.buildings = generateBuildings(this);
     const houseColorChangePeriod = 1000;
     this.draw = function() {
       const field = this;
-      ctx.beginPath();
       for (let i = 0; i < this.cellsHeight; i++) {
         for (let j = 0; j < this.cellsWidth; j++) {
           switch (this.cells[i][j].type) {
             case 0: {
-                [[-1, 0], [0, -1], [0, 1], [1, 0]].forEach(([di, dj]) => {
-                  const newI = i + di;
-                  if (newI < 0 || newI >= this.cellsHeight)
-                    return;
-                  const newJ = j + dj;
-                  if (newJ < 0 || newJ >= this.cellsWidth)
-                    return;
-                  if (this.cells[i + di][j + dj].type === 0) {
-                    ctx.moveTo(localX(j + 0.5), localY(i + 0.5));
-                    ctx.lineTo(localX(j + 0.5 + dj), localY(i + 0.5 + di));
-                  }
-                });
+              ctx.setLineDash([1, 3]);
+              ctx.beginPath();
+              [[-1, 0], [0, -1], [0, 1], [1, 0]].forEach(([di, dj]) => {
+                const newI = i + di;
+                if (newI < 0 || newI >= this.cellsHeight)
+                  return;
+                const newJ = j + dj;
+                if (newJ < 0 || newJ >= this.cellsWidth)
+                  return;
+                if (this.cells[i + di][j + dj].type === 0) {
+                  ctx.moveTo(localX(j + 0.5), localY(i + 0.5));
+                  ctx.lineTo(localX(j + 0.5 + dj), localY(i + 0.5 + di));
+                }
+              });
+              ctx.stroke();
             } break;
             case 1: {
-              const { houses } = this.cells[i][j];
-              if (houses.length === 0) {
-                ctx.strokeRect(localX(j) + border,
-                  localY(i) + border,
-                  this.cellWidth - 2 * border,
-                  this.cellHeight - 2 * border);
-              } else {
-                const houseIndex = Math.floor(Date.now() / houseColorChangePeriod)
-                                 % houses.length;
-                ctx.fillStyle = houses[houseIndex].color;
-                ctx.fillRect(localX(j) + border,
-                  localY(i) + border,
-                  this.cellWidth - 2 * border,
-                  this.cellHeight - 2 * border);
+              ctx.setLineDash([]);
+              ctx.beginPath();
+              const { building } = this.cells[i][j];
+              if (building) {
+                if (building.type !== 'house') {
+                  ctx.drawImage(BUILDING_TYPES[building.type].img,
+                    localX(j) + 2 * border,
+                    localY(i) + 2 * border,
+                    this.cellWidth - 4 * border,
+                    this.cellHeight - 4 * border);
+                } else {
+                  const { humans } = building;
+                  const houseIndex = Math.floor(Date.now() / houseColorChangePeriod)
+                                   % humans.length;
+                  ctx.fillStyle = humans[houseIndex].color;
+                  ctx.fillRect(localX(j) + border,
+                    localY(i) + border,
+                    this.cellWidth - 2 * border,
+                    this.cellHeight - 2 * border);
+                }
               }
+              ctx.strokeRect(localX(j) + border,
+                localY(i) + border,
+                this.cellWidth - 2 * border,
+                this.cellHeight - 2 * border);
+              ctx.stroke();
             } break;
           }
         }
@@ -185,39 +237,111 @@ window.onload = function() {
 
     };
 
+    function generateBuildings(field) {
+      const { humans } = field;
+      const mds = generateTypeBuildings(field, 'md', 5);
+      const bars = generateTypeBuildings(field, 'bar', 5);
+      const houses = generateHouses(field, humans);
+      const buildings = [].concat(mds, bars, houses);
+      buildings.md = mds;
+      buildings.bar = bars;
+      buildings.house = houses;
+      return buildings;
+    }
+
+    function generateBuildingsGeneral(field, type, count, condition) {
+      const { cellsHeight, cellsWidth } = field;
+      const buildings = new Array(count);
+      for (let i = 0; i < count; i++) {
+        let [x, y] = randomCoord(cellsWidth, cellsHeight);
+        while (!condition(x, y)) {
+          [x, y] = randomCoord(cellsWidth, cellsHeight);
+        }
+        buildings[i] = { type, x, y };
+      }
+      return buildings;
+    }
+
+    function generateTypeBuildings(field, type, count) {
+      const buildings = generateBuildingsGeneral(field, type, count, (x, y) =>
+        field.cells[y][x].type === 1 &&
+        !field.cells[y][x].building
+      );
+      buildings.forEach(building => {
+        const { x, y } = building;
+        field.cells[y][x].building = building;
+      });
+      return buildings;
+    }
+
+    function generateHouses(field, humans) {
+      const { cells } = field;
+      return generateBuildingsGeneral(field, 'house', humans.length,
+        (x, y) => cells[y][x].type === 1
+               && ( !cells[y][x].building
+                 || cells[y][x].building.type === 'house')
+      ).map((building, i) => {
+        const { x, y } = building;
+        if (field.cells[y][x].building === undefined) {
+          building.humans = [humans[i]];
+          field.cells[y][x].building = building;
+        } else {
+          field.cells[y][x].building.humans.push(humans[i]);
+        }
+        humans[i].houseX = x;
+        humans[i].houseY = y;
+        humans[i].startMoving(x, y);
+      });
+    }
+
     function generateHumans(field) {
+      const { cellsWidth, cellsHeight } = field;
       const humans = new Array(10);
       for (let i = 0; i < humans.length; i++) {
-        let x = Math.floor(Math.random() * field.cellsWidth);
-        let y = Math.floor(Math.random() * field.cellsHeight);
+        let [x, y] = randomCoord(cellsWidth, cellsHeight);
         while (field.cells[y][x].type !== 0) {
-          x = Math.floor(Math.random() * field.cellsWidth);
-          y = Math.floor(Math.random() * field.cellsHeight);
+          [x, y] = randomCoord(cellsWidth, cellsHeight);          
         }
-        let houseX = Math.floor(Math.random() * field.cellsWidth);
-        let houseY = Math.floor(Math.random() * field.cellsHeight);
-        while (field.cells[houseY][houseX].type !== 1) {
-          houseX = Math.floor(Math.random() * field.cellsWidth);
-          houseY = Math.floor(Math.random() * field.cellsHeight);
-        }
-        humans[i] = new Human(field, x, y, houseX, houseY);
-        field.cells[houseY][houseX].houses.push(humans[i]);
+        humans[i] = new Human(field, x, y);
       }
       return humans;
     }
     
     function generateCells(width, height) {
       const cells = new Array(height);
+      const used = new Array(height);
       for (let i = 0; i < height; i++) {
         cells[i] = new Array(width);
+        used[i] = new Array(width);
         for (let j = 0; j < width; j++) {
-          cells[i][j] = {
-            type: i % 2 === 0 && j % 3 > 0 ? 1 : 0,
-            houses: [],
-          };
+          cells[i][j] = false;
+          used[i][j] = false;
+        }
+      }
+      const [x, y] = randomCoord(width, height);
+      used[y][x] = true;
+      makeFree(1, x, y);
+      for (let i = 0; i < height; i++) {
+        for (let j = 0; j < width; j++) {
+          cells[i][j] = { type: +cells[i][j] };
         }
       }
       return cells;
+
+      function makeFree(prob, x, y) {
+        cells[y][x] = true;
+        used[y][x] = true;
+        [[-1, 0], [0, -1], [0, 1], [1, 0]].forEach(([dx, dy]) => {
+          const newX = x + dx;
+          if (newX < 0 || newX >= width) return;
+          const newY = y + dy;
+          if (newY < 0 || newY >= height) return;
+          if (!used[newY][newX] && Math.random() < prob) {
+            makeFree(prob / 1.1, newX, newY);
+          }
+          used[newY][newX] = true;
+        });
+      }
     }
   }
 
