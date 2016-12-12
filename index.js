@@ -40,6 +40,7 @@ window.onload = function() {
         human.move(dt);
       }
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.setLineDash([]);
       ctx.strokeRect(0, 0, canvas.width, canvas.height);
       field.draw();
       lastTime = nowDate;
@@ -63,6 +64,7 @@ window.onload = function() {
   function Human(field, x, y) {
     this.x = x;
     this.y = y;
+    this.house = null;
     this.drawingX = this.x;
     this.drawingY = this.y;
     this.walking = false;
@@ -117,8 +119,24 @@ window.onload = function() {
     };
 
     this.nextTarget = function() {
-      const [x, y] = randomCoord(field.cellsWidth, field.cellsHeight);
-      this.startMoving(x, y);
+      const choice = randInt(3);
+      let targetBuilding;
+      const { md, bar } = field.buildings;
+      switch (choice) {
+        case 0: {
+          targetBuilding = md[randInt(md.length)];
+        } break;
+        case 1: {
+          targetBuilding = bar[randInt(bar.length)];
+        } break;
+        case 2: {
+          targetBuilding = this.house;
+        } break;
+      }
+      if (targetBuilding) {
+        const { x, y } = targetBuilding;
+        this.startMoving(x, y);
+      }
     };
 
     this.calcWalkingPath = function(toX, toY) {
@@ -159,7 +177,7 @@ window.onload = function() {
     this.width = 630;
     this.height = 378;
     this.cellsWidth = 25;
-    this.cellsHeight = 15;
+    this.cellsHeight = 16;
     this.cellWidth = this.width / this.cellsWidth;
     this.cellHeight = this.height / this.cellsHeight;
     this.cells = generateCells(this.cellsWidth, this.cellsHeight);
@@ -288,8 +306,7 @@ window.onload = function() {
         } else {
           field.cells[y][x].building.humans.push(humans[i]);
         }
-        humans[i].houseX = x;
-        humans[i].houseY = y;
+        humans[i].house = field.cells[y][x].building;
         humans[i].startMoving(x, y);
       });
     }
@@ -309,39 +326,14 @@ window.onload = function() {
     
     function generateCells(width, height) {
       const cells = new Array(height);
-      const used = new Array(height);
       for (let i = 0; i < height; i++) {
         cells[i] = new Array(width);
-        used[i] = new Array(width);
         for (let j = 0; j < width; j++) {
-          cells[i][j] = false;
-          used[i][j] = false;
-        }
-      }
-      const [x, y] = randomCoord(width, height);
-      used[y][x] = true;
-      makeFree(1, x, y);
-      for (let i = 0; i < height; i++) {
-        for (let j = 0; j < width; j++) {
-          cells[i][j] = { type: +cells[i][j] };
+          const type = i % 3 === 0 || j % 6 === 0 ? 0 : 1;
+          cells[i][j] = { type };
         }
       }
       return cells;
-
-      function makeFree(prob, x, y) {
-        cells[y][x] = true;
-        used[y][x] = true;
-        [[-1, 0], [0, -1], [0, 1], [1, 0]].forEach(([dx, dy]) => {
-          const newX = x + dx;
-          if (newX < 0 || newX >= width) return;
-          const newY = y + dy;
-          if (newY < 0 || newY >= height) return;
-          if (!used[newY][newX] && Math.random() < prob) {
-            makeFree(prob / 1.1, newX, newY);
-          }
-          used[newY][newX] = true;
-        });
-      }
     }
   }
 
@@ -388,6 +380,10 @@ window.onload = function() {
     }
     return res;
   };
+
+  function randInt(maxValue) {
+    return Math.floor(Math.random() * maxValue);
+  }
 };
 
 
